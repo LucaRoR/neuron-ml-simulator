@@ -10,13 +10,13 @@ class MLParameters:
     C: float = 1 #muF/cm^2
 
     #Maximal conductances
-    g_Na: float = 20.0 #mS/cm^2
-    g_K: float = 20.0 #mS/cm^2
+    g_Na: float = 120.0 #mS/cm^2
+    g_K: float = 40.0 #mS/cm^2
     g_L: float = 0.2 #mS/cm^2
 
     #Reversal potentials
     E_Na: float = 55.0 #mV
-    E_K: float = -90.0 #mV
+    E_K: float = -80.0 #mV
     E_L: float = -65.0 #mV
 
     #External current
