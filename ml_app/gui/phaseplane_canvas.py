@@ -16,7 +16,7 @@ from ..model.ml_equations import f, g
 
 @dataclass(frozen=True)
 class PhasePlaneView: #view configuration
-    u_min: float = -90.0 #mV
+    u_min: float = -85.0 #mV
     u_max: float = 60.0 #mV
     w_min: float = 0.0
     w_max: float = 1.0
@@ -152,17 +152,14 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
                 DU[i,j] = f(u, w, I_ext, par)
                 DW[i,j] = g(u, w, par)
         
+        
         #we normalize the vectors to avoid having a few arrows clogging up the whole space
         norm = np.sqrt(DU ** 2 + DW ** 2)
         norm[norm == 0.0] = 1.0
         DU_n = DU / norm
         DW_n = DW / norm
 
-        self._ax.quiver(U, W, DU_n, DW_n, angles="xy", scale_units="xy", scale=8, width=0.003, alpha=0.6)
-
-        print("DU finite:", np.isfinite(DU).mean(), "DW finite:", np.isfinite(DW).mean())
-        print("DU range:", np.nanmin(DU), np.nanmax(DU))    
-        print("DW range:", np.nanmin(DW), np.nanmax(DW))
+        self._ax.quiver(U, W, DU_n, DW_n, angles="xy", scale_units="xy", scale=1/6, width=0.003, alpha=0.4, zorder=1)
     
     @staticmethod
     def _color_for_equilibrium(eq: Equilibrium) -> str:
