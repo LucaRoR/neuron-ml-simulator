@@ -76,7 +76,8 @@ class ControlsPanel(QWidget):
         self._emit_timer.setInterval(int(debounce_ms))
         self._emit_timer.timeout.connect(self._emit_state_now)
 
-        self._par_widgets: Dict[str, QWidget] = {}
+        self._par_widgets: dict[str, QWidget] = {}
+        self._par_labels: dict[str, QWidget] = {}
 
         self._build_ui()
         self._sync_widgets_from_state()
@@ -309,14 +310,19 @@ class ControlsPanel(QWidget):
         if not is_dataclass(self._par):
             form.addRow(QLabel("It is not a dataclass."), QLabel(""))
             return
-        
+
         for f in fields(self._par):
             name = f.name
             val = getattr(self._par, name)
 
             w = self._make_widget_for_value(name, val)
             self._par_widgets[name] = w
-            form.addRow(name, w)
+
+            lab = QLabel(name)
+            self._par_labels[name] = lab
+            form.addRow(lab, w)
+        
+        self._update_meff_visibility()
     
     #--------------
     #Widget creator
@@ -345,7 +351,7 @@ class ControlsPanel(QWidget):
             sb.valueChanged.connect(lambda _=0, n=name: self._on_par_widget_changed(n))
             return sb
 
-        #In case we get weird input, the program doesn't crash and we display it as a string.
+        #We don't expect weird input, but the program doesn't crash and we display it as a string.
         lab = QLabel(str(val))
         lab.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         return lab
@@ -377,6 +383,27 @@ class ControlsPanel(QWidget):
         step = max(1e-6, span / 200)
         dec = 8 if (abs(val) < 1e-2) else 6
         return (mn, mx, step, dec)
+    
+    def _set_par_row_visible(self, name: str, visible: bool) -> None:
+        lab = self._par_labels.get(name)
+        w = self._par_widgets.get(name)
+
+        if lab is not None:
+            lab.setVisible(visible)
+        if w is not None:
+            w.setVisible(visible)
+    
+    def _update_meff_visibility(self) -> None:
+        use_meff = bool(getattr(self._par, "meff_toggle", True))
+
+        meff_fields = ("V1_meff", "V2_meff")
+        mh_fields = ("V1_m", "V2_m", "V1_h", "V2_h")
+
+        for fname in meff_fields:
+            self._set_par_row_visible(fname, use_meff)
+
+        for fname in mh_fields:
+            self._set_par_row_visible(fname, not use_meff)
     
     #-----
     #Synch
@@ -416,19 +443,34 @@ class ControlsPanel(QWidget):
         self._stop_on_spike_chk.setChecked(bool(self._sim.stop_on_spike))
 
         #Phase plane
-        self._pp_u_min.setValue(float(self._phase_view.u_min))
-        self._pp_u_max.setValue(float(self._phase_view.u_max))
-        self._pp_w_min.setValue(float(self._phase_view.w_min))
-        self._pp_w_max.setValue(float(self._phase_view.w_max))
-        self._show_vec_chk.setChecked(bool(self._phase_view.show_vector_field))
-        self._show_eq_chk.setChecked(bool(self._phase_view.show_equilibria))
-        self._show_null_chk.setChecked(bool(self._phase_view.show_nullclines))
+        for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
+                   self._show_vec_chk, self._show_eq_chk, self._show_null_chk):
+            sb.blockSignals(True)
+        try:
+            self._pp_u_min.setValue(float(self._phase_view.u_min))
+            self._pp_u_max.setValue(float(self._phase_view.u_max))
+            self._pp_w_min.setValue(float(self._phase_view.w_min))
+            self._pp_w_max.setValue(float(self._phase_view.w_max))
+            self._show_vec_chk.setChecked(bool(self._phase_view.show_vector_field))
+            self._show_eq_chk.setChecked(bool(self._phase_view.show_equilibria))
+            self._show_null_chk.setChecked(bool(self._phase_view.show_nullclines))
+        finally:
+            for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
+                       self._show_vec_chk, self._show_eq_chk, self._show_null_chk):
+                sb.blockSignals(False)
 
         #Timeseries
-        self._ts_t_min.setValue(float(self._ts_view.t_min if self._ts_view.t_min is not None else 0.0))
-        self._ts_t_max.setValue(float(self._ts_view.t_max if self._ts_view.t_max is not None else 0.0))
-        self._show_u_chk.setChecked(bool(self._ts_view.show_u))
-        self._show_w_chk.setChecked(bool(self._ts_view.show_w))
+        ts_ws = (self._ts_t_min, self._ts_t_max, self._show_u_chk, self._show_w_chk)
+        for w in ts_ws:
+            w.blockSignals(True)
+        try:
+            self._ts_t_min.setValue(float(self._ts_view.t_min if self._ts_view.t_min is not None else 0.0))
+            self._ts_t_max.setValue(float(self._ts_view.t_max if self._ts_view.t_max is not None else 1.0))
+            self._show_u_chk.setChecked(bool(self._ts_view.show_u))
+            self._show_w_chk.setChecked(bool(self._ts_view.show_w))
+        finally:
+            for w in ts_ws:
+                w.blockSignals(False)
 
         #Parameters
         for name, w in self._par_widgets.items():
@@ -539,4 +581,8 @@ class ControlsPanel(QWidget):
         w = self._par_widgets[name]
         new_val = self._read_widget_value(w)
         self._par = replace(self._par, **{name: new_val})
+
+        if name == "meff_toggle":
+            self._update_meff_visibility()
+
         self._schedule_emit()

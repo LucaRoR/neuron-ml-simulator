@@ -2,18 +2,29 @@ import numpy as np
 from .parameters import MLParameters
 
 #Steady-state functions and time constants
-def meff_inf(u: float, par:MLParameters) -> float:
+def meff_inf(u: float, par: MLParameters) -> float:
     return 0.5 * (1 + np.tanh((u - par.V1_meff) / par.V2_meff))
 
-def w_inf(u: float, par:MLParameters) -> float:
+def w_inf(u: float, par: MLParameters) -> float:
     return 0.5 * (1 + np.tanh((u - par.V3_w) / par.V4_w))
 
-def tau_w(u: float, par:MLParameters) -> float:
+def tau_w(u: float, par: MLParameters) -> float:
     return 1 / (2 * par.Phi_w * np.cosh((u - par.V3_w) / par.V4_w))
 
+def m_inf(u: float, par: MLParameters) -> float:
+    return 0.5 * (1 + np.tanh((u - par.V1_m) / par.V2_m))
+
+def h_inf(u: float, par: MLParameters) -> float:
+    return 0.5 * (1 - np.tanh((u - par.V1_h) / par.V2_h))
+
 #Ionic currents
+def na_activation(u, par):
+    if par.meff_toggle:
+        return meff_inf(u, par)
+    return (m_inf(u, par) ** 3) * h_inf(u, par)
+
 def I_Na(u: float, par:MLParameters) -> float:
-    return par.g_Na * meff_inf(u, par) * (u - par.E_Na)
+    return par.g_Na * na_activation(u, par) * (u - par.E_Na)
 
 def I_K(u: float, w: float, par:MLParameters) -> float:
     return par.g_K * w * (u - par.E_K)
