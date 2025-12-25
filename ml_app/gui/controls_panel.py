@@ -245,13 +245,19 @@ class ControlsPanel(QWidget):
         self._show_vec_chk = QCheckBox("Show vector field")
         self._show_eq_chk = QCheckBox("Show equilibria")
         self._show_null_chk = QCheckBox("Show nullclines")
+        self._show_bif_chk = QCheckBox("Show bifurcations")
+        self._show_sep_chk = QCheckBox("Show separatrix")
         self._show_vec_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_eq_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_null_chk.stateChanged.connect(self._on_phase_view_changed)
+        self._show_bif_chk.stateChanged.connect(self._on_phase_view_changed)
+        self._show_sep_chk.stateChanged.connect(self._on_phase_view_changed)
 
         phase_layout.addRow("", self._show_vec_chk)
         phase_layout.addRow("", self._show_eq_chk)
         phase_layout.addRow("", self._show_null_chk)
+        phase_layout.addRow("", self._show_bif_chk)
+        phase_layout.addRow("", self._show_sep_chk)
 
         root.addWidget(phase_box)
 
@@ -444,7 +450,7 @@ class ControlsPanel(QWidget):
 
         #Phase plane
         for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
-                   self._show_vec_chk, self._show_eq_chk, self._show_null_chk):
+                   self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_bif_chk, self._show_sep_chk):
             sb.blockSignals(True)
         try:
             self._pp_u_min.setValue(float(self._phase_view.u_min))
@@ -454,9 +460,12 @@ class ControlsPanel(QWidget):
             self._show_vec_chk.setChecked(bool(self._phase_view.show_vector_field))
             self._show_eq_chk.setChecked(bool(self._phase_view.show_equilibria))
             self._show_null_chk.setChecked(bool(self._phase_view.show_nullclines))
+            self._show_bif_chk.setChecked(bool(self._phase_view.show_bifurcations))
+            self._show_sep_chk.setChecked(bool(self._phase_view.show_separatrix))
+
         finally:
             for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
-                       self._show_vec_chk, self._show_eq_chk, self._show_null_chk):
+                       self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_bif_chk, self._show_sep_chk):
                 sb.blockSignals(False)
 
         #Timeseries
@@ -557,6 +566,8 @@ class ControlsPanel(QWidget):
             show_vector_field=bool(self._show_vec_chk.isChecked()),
             show_equilibria=bool(self._show_eq_chk.isChecked()),
             show_nullclines=bool(self._show_null_chk.isChecked()),
+            show_bifurcations=bool(self._show_bif_chk.isChecked()),
+            show_separatrix=bool(self._show_sep_chk.isChecked())
         )
         self._schedule_emit()
     

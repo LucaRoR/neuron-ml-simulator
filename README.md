@@ -60,14 +60,14 @@ neuron-ml-simulator/
 │ ├── nullclines.py
 │ ├── equilibria.py
 │ ├── bifurcations.py
+| ├–– separatrix.py
 │ └── least_square_fit_Na.py
 ├── gui/
 │ ├── __init__.py
 │ ├── main_window.py
 │ ├── controls_panel.py
 │ ├── phaseplane_canvas.py
-│ ├── timeseries_canvas.py
-│ └── status_bar.py
+│ └── timeseries_canvas.py
 ├── utils/
 │ ├── __init__.py
 │ ├── math_utils.py

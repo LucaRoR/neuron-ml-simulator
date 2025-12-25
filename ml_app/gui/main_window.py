@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
 
         #We inform the user about the status of the simulation.
         msg = "OK" if res.success else "FAILED"
-        spikes = res.events.get("spike", None) if hasattr(res, "events") else None
+        spikes = res.events.get("spikes", None) if hasattr(res, "events") else None
         n_spikes = int(len(spikes)) if spikes is not None else 0
 
         self._status.showMessage(

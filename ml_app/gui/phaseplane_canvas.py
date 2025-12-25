@@ -9,10 +9,15 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+from scipy.integrate import solve_ivp
+
 from ..model.parameters import MLParameters
 from ..model.nullclines import u_nullcline, w_nullcline
 from ..model.equilibria import find_equilibria, Equilibrium
-from ..model.ml_equations import f, g
+from ..model.ml_equations import f, g, w_inf, jacobian, ml_rhs
+from ..model.bifurcations import find_saddle_nodes, find_hopf_points
+from ..model.separatrix import compute_separatrix, ViewWindow
+
 
 @dataclass(frozen=True)
 class PhasePlaneView: #view configuration
@@ -28,6 +33,8 @@ class PhasePlaneView: #view configuration
     show_vector_field: bool = True
     show_equilibria: bool = True
     show_nullclines: bool = True
+    show_bifurcations: bool = False
+    show_separatrix: bool = False
 
 class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines, equilibria, vector field 
     def __init__(self, 
@@ -44,6 +51,9 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         self._fig = Figure(constrained_layout=True) #create a Matplotlib figure
         self._ax = self._fig.add_subplot(111) #create axes
         self._canvas = FigureCanvas(self._fig) #Matplotlib figure becomes a Qt widget
+
+        self._sep_cache_key = None #cache for separatrix
+        self._sep_cache_res = None
 
         layout = QVBoxLayout()
         layout.addWidget(self._canvas)
@@ -89,6 +99,35 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         if view.show_equilibria:
             self._plot_equilibria(I_ext, par)
 
+        if view.show_bifurcations:
+            self._plot_bifurcations(par)
+        
+        if view.show_separatrix:
+            win = ViewWindow(view.u_min, view.u_max, view.w_min, view.w_max)
+            res = compute_separatrix(I_ext, par, window=win)
+
+            if res is not None:
+                for br in res.branches:
+                    self._ax.plot(br.u, br.w, "--", linewidth=1.5, zorder=40)
+        
+        key = (
+            float(I_ext),
+            repr(par),
+            float(view.u_min), float(view.u_max), float(view.w_min), float(view.w_max),
+        )
+
+        if key != self._sep_cache_key:
+            win = ViewWindow(view.u_min, view.u_max, view.w_min, view.w_max)
+            self._sep_cache_res = compute_separatrix(I_ext, par, window=win)
+            self._sep_cache_key = key
+
+        res = self._sep_cache_res
+        if view.show_separatrix and res is not None:
+            for br in res.branches:
+                self._ax.plot(br.u, br.w, linewidth=1.5, zorder=40)
+
+
+
         self._ax.set_title(f"Phase Plane. I_ext = {I_ext:.3f}")
         self._canvas.draw_idle()
     
@@ -99,7 +138,11 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
     def _setup_axes(self) -> None:
         v = self._view
         self._ax.set_xlim(v.u_min, v.u_max)
-        self._ax.set_ylim(v.w_min, v.w_max)
+        y0, y1 = float(v.w_min), float(v.w_max)
+        if not (y1 > y0):  # handles y1==y0 and swapped values
+            eps = 1e-3 if y0 == 0 else 1e-3 * abs(y0)  # small relative pad
+            y0, y1 = y0 - eps, y0 + eps
+        self._ax.set_ylim(y0, y1)
         self._ax.set_xlabel("u (mV)")
         self._ax.set_ylabel("w")
         self._ax.grid(True, alpha=0.25) #alpha regulates the transparency of the axes
@@ -160,7 +203,37 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         DW_n = DW / norm
 
         self._ax.quiver(U, W, DU_n, DW_n, angles="xy", scale_units="xy", scale=1/6, width=0.003, alpha=0.4, zorder=1)
-    
+
+    def _plot_bifurcations(self, par: MLParameters) -> None:
+        v = self._view
+
+        sns = find_saddle_nodes(par, u_min=v.u_min, u_max=v.u_max, n_scan=5001)
+        hopf = find_hopf_points(par, u_min=v.u_min, u_max=v.u_max, n_scan=5001)
+
+        # Saddle-nodes
+        for sn in sns:
+            w = float(w_inf(sn.u, par))
+            self._ax.scatter(sn.u, w, marker="s", s=45, zorder=6)
+            self._ax.annotate(
+                f"SN\nI={sn.I_ext:.3g}",
+                (sn.u, w),
+                textcoords="offset points",
+                xytext=(6, -10),
+                fontsize=8,
+            )
+
+        # Hopf
+        for hp in hopf:
+            w = float(w_inf(hp.u, par))
+            self._ax.scatter(hp.u, w, marker="x", s=55, zorder=6)
+            self._ax.annotate(
+                f"Hopf\nI={hp.I_ext:.3g}",
+                (hp.u, w),
+                textcoords="offset points",
+                xytext=(6, 6),
+                fontsize=8,
+            )
+        
     @staticmethod
     def _color_for_equilibrium(eq: Equilibrium) -> str:
         s = (eq.stability or "").lower()
