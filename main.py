@@ -18,12 +18,17 @@ def _apply_styles(app: QApplication) -> None:
 def _set_app_icon(app: QApplication):
     """Sets app icon. Designed to work during testing."""
     repo_root = Path(__file__).resolve().parent
-    icon_path = repo_root / "ml_app" / "resources" / "icons" / "app_icon.png"
+    icon_path = repo_root / "ml_app" / "resources" / "icons" / "app_icon.svg"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
 def main() -> int:
     app = QApplication(sys.argv)
+
+    app.setApplicationName("Neuron-ML Simulator")
+    app.setApplicationDisplayName("Neuron-ML Simulator")
+    app.setOrganizationName("Luca Pompili")
+    app.setApplicationVersion("0.9.0-beta")
 
     _apply_styles(app)
     _set_app_icon(app)

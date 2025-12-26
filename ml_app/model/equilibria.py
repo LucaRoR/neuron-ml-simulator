@@ -88,6 +88,10 @@ def find_equilibria(
         if classify:
             #Compute the eigenvalues of the Jacobian
             J = jacobian(u_star, w_star, I_ext, par)
+            if not np.isfinite(J).all():
+                eig = None
+                stab = "non-finite"
+                continue
             eig = np.linalg.eigvals(J)
         
             #Classification

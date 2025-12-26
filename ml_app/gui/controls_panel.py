@@ -148,9 +148,19 @@ class ControlsPanel(QWidget):
 
         root.addWidget(q_box)
 
-        #Simulation box
+        #Simulation box (scrollable)
         sim_box = QGroupBox("Simulation")
-        sim_layout = QFormLayout(sim_box)
+        sim_outer = QVBoxLayout(sim_box)
+
+        sim_scroll = QScrollArea()
+        sim_scroll.setWidgetResizable(True)
+        sim_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sim_scroll.setMaximumHeight(240)
+
+        sim_inner = QWidget()
+        sim_layout = QFormLayout(sim_inner)
+        sim_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        sim_layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._t1_spin = QDoubleSpinBox()
         self._t1_spin.setRange(0.1, 50000.0)
@@ -202,6 +212,9 @@ class ControlsPanel(QWidget):
         self._stop_on_spike_chk = QCheckBox("Stop integration on spike")
         self._stop_on_spike_chk.stateChanged.connect(self._on_sim_changed)
         sim_layout.addRow("", self._stop_on_spike_chk)
+        
+        sim_scroll.setWidget(sim_inner)
+        sim_outer.addWidget(sim_scroll)
 
         root.addWidget(sim_box)
 
@@ -294,9 +307,9 @@ class ControlsPanel(QWidget):
         par_box = QGroupBox("Model parameters")
         par_outer = QVBoxLayout(par_box)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        par_scroll = QScrollArea()
+        par_scroll.setWidgetResizable(True)
+        par_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         par_inner = QWidget()
         self._par_form = QFormLayout(par_inner)
@@ -305,8 +318,8 @@ class ControlsPanel(QWidget):
 
         self._build_parameter_form(self._par_form)
 
-        scroll.setWidget(par_inner)
-        par_outer.addWidget(scroll)
+        par_scroll.setWidget(par_inner)
+        par_outer.addWidget(par_scroll)
 
         root.addWidget(par_box, stretch=1)
 
@@ -327,9 +340,7 @@ class ControlsPanel(QWidget):
             lab = QLabel(name)
             self._par_labels[name] = lab
             form.addRow(lab, w)
-        
-        self._update_meff_visibility()
-    
+            
     #--------------
     #Widget creator
     #--------------
@@ -367,6 +378,9 @@ class ControlsPanel(QWidget):
     
     def _range_for_float(self, name: str, val:float) -> Tuple[float, float, float, int]:
         #Voltages and reversal potentials (mV)
+        if name.startswith("V2_") or name.startswith("V4_"):
+            return (1e-6, 200.0, 0.1, 6)
+        
         if name.startswith("E_") or name.startswith("V"):
             return(-200.0, 200.0, 1.0, 4)
         
@@ -399,17 +413,6 @@ class ControlsPanel(QWidget):
         if w is not None:
             w.setVisible(visible)
     
-    def _update_meff_visibility(self) -> None:
-        use_meff = bool(getattr(self._par, "meff_toggle", True))
-
-        meff_fields = ("V1_meff", "V2_meff")
-        mh_fields = ("V1_m", "V2_m", "V1_h", "V2_h")
-
-        for fname in meff_fields:
-            self._set_par_row_visible(fname, use_meff)
-
-        for fname in mh_fields:
-            self._set_par_row_visible(fname, not use_meff)
     
     #-----
     #Synch
@@ -592,8 +595,5 @@ class ControlsPanel(QWidget):
         w = self._par_widgets[name]
         new_val = self._read_widget_value(w)
         self._par = replace(self._par, **{name: new_val})
-
-        if name == "meff_toggle":
-            self._update_meff_visibility()
 
         self._schedule_emit()

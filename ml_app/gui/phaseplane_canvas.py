@@ -196,11 +196,15 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
                 DW[i,j] = g(u, w, par)
         
         
-        #we normalize the vectors to avoid having a few arrows clogging up the whole space
+        #we normalize the vectors to avoid having a few arrows clogging up the whole space. We prevent norm == 0
         norm = np.sqrt(DU ** 2 + DW ** 2)
-        norm[norm == 0.0] = 1.0
-        DU_n = DU / norm
-        DW_n = DW / norm
+        DU_n = np.zeros_like(DU)
+        DW_n = np.zeros_like(DW)
+
+        mask = norm > 0
+
+        DU_n[mask] = DU[mask] / norm[mask]
+        DW_n[mask] = DW[mask] / norm[mask]
 
         self._ax.quiver(U, W, DU_n, DW_n, angles="xy", scale_units="xy", scale=1/6, width=0.003, alpha=0.4, zorder=1)
 
