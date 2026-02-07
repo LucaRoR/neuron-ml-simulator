@@ -1,6 +1,6 @@
 # neuron-ml-simulator
 
-**Status: Beta Version (v0.9.0)**
+**Status: Beta Version (v0.9.1)**
 
 Interactive Python simulator for a modified Morris-Lecar model (Na/K-based), with phase-plane and time-series visualisation.
 
@@ -30,7 +30,6 @@ python3 main.py
 ## Features
 
 - PyQt6 GUI:
-
   - Phase plane (vector field, nullclines, equilibria, bifurcations, separatrix)
   - Time series (voltage, recovery variable)
   - Parameter controls

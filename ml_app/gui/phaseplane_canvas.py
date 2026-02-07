@@ -103,29 +103,28 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
             self._plot_bifurcations(par)
         
         if view.show_separatrix:
-            win = ViewWindow(view.u_min, view.u_max, view.w_min, view.w_max)
-            res = compute_separatrix(I_ext, par, window=win)
+            w0, w1 = self._safe_w_bounds()
 
+            key = (
+                float(I_ext),
+                repr(par),
+                float(view.u_min), float(view.u_max), float(w0), float(w1),
+            )
+
+            if key != self._sep_cache_key:
+                win = ViewWindow(view.u_min, view.u_max, w0, w1)
+                self._sep_cache_res = compute_separatrix(I_ext, par, window=win)
+                self._sep_cache_key = key
+
+            res = self._sep_cache_res
             if res is not None:
                 for br in res.branches:
                     self._ax.plot(br.u, br.w, "--", linewidth=1.5, zorder=40)
-        
-        key = (
-            float(I_ext),
-            repr(par),
-            float(view.u_min), float(view.u_max), float(view.w_min), float(view.w_max),
-        )
 
-        if key != self._sep_cache_key:
-            win = ViewWindow(view.u_min, view.u_max, view.w_min, view.w_max)
-            self._sep_cache_res = compute_separatrix(I_ext, par, window=win)
-            self._sep_cache_key = key
-
-        res = self._sep_cache_res
-        if view.show_separatrix and res is not None:
-            for br in res.branches:
-                self._ax.plot(br.u, br.w, linewidth=1.5, zorder=40)
-
+        else:
+            #clear cache when not displaying separatrix
+            self._sep_cache_key = None
+            self._sep_cache_res = None
 
 
         self._ax.set_title(f"Phase Plane. I_ext = {I_ext:.3f}")
@@ -139,9 +138,7 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         v = self._view
         self._ax.set_xlim(v.u_min, v.u_max)
         y0, y1 = float(v.w_min), float(v.w_max)
-        if not (y1 > y0):  # handles y1==y0 and swapped values
-            eps = 1e-3 if y0 == 0 else 1e-3 * abs(y0)  # small relative pad
-            y0, y1 = y0 - eps, y0 + eps
+        y0, y1 = self._safe_w_bounds()
         self._ax.set_ylim(y0, y1)
         self._ax.set_xlabel("u (mV)")
         self._ax.set_ylabel("w")
@@ -181,7 +178,8 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
 
         #create a grid of points
         uu = np.linspace(v.u_min, v.u_max, v.vf_nu)
-        ww = np.linspace(v.w_min, v.w_max, v.vf_nw)
+        w0, w1 = self._safe_w_bounds()
+        ww = np.linspace(w0, w1, v.vf_nw)
         U, W = np.meshgrid(uu, ww)
 
         DU = np.empty_like(U, dtype=float)
@@ -261,4 +259,14 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
             return "^", 60.0
         else:
             return "s", 50.0
+        
+    def _safe_w_bounds(self) -> tuple[float, float]:
+        v = self._view
+        y0, y1 = float(v.w_min), float(v.w_max)
+
+        if y1 > y0:
+            return y0, y1
+
+        # collapse or swapped -> set default values
+        return 0, 1
 

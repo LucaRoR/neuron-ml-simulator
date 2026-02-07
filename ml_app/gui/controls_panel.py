@@ -70,6 +70,16 @@ class ControlsPanel(QWidget):
         self._phase_view = i_phase_view if i_phase_view is not None else PhasePlaneView()
         self._ts_view = i_ts_view if i_ts_view is not None else TimeSeriesView()
 
+        self._defaults = GuiState(
+            par = replace(self._par),
+            I_ext = float(self._I_ext),
+            y0_u = float(self._y0_u),
+            y0_w = float(self._y0_w),
+            sim = replace(self._sim),
+            phase_view = replace(self._phase_view),
+            ts_view = replace(self._ts_view),
+        )
+
         #We want to avoid that the program spams redraws while the user drags sliders or spinboxes
         self._emit_timer = QTimer(self)
         self._emit_timer.setSingleShot(True)
@@ -144,7 +154,13 @@ class ControlsPanel(QWidget):
         self._run_btn = QPushButton("Compute")
         self._run_btn.clicked.connect(self._on_run_clicked)
         run_row.addWidget(self._run_btn)
+
+        self._reset_btn = QPushButton("Reset")
+        self._reset_btn.clicked.connect(self._on_reset_clicked)
+        run_row.addWidget(self._reset_btn)
+
         q_layout.addRow("", run_row)
+
 
         root.addWidget(q_box)
 
@@ -226,6 +242,9 @@ class ControlsPanel(QWidget):
         self._pp_u_max = QDoubleSpinBox()
         self._pp_w_min = QDoubleSpinBox()
         self._pp_w_max = QDoubleSpinBox()
+
+        for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max):
+            sb.setKeyboardTracking(False)
 
         for sb in (self._pp_u_min, self._pp_u_max):
             sb.setRange(-500.0, 500.0)
@@ -525,9 +544,46 @@ class ControlsPanel(QWidget):
         self.stateChanged.emit(self.current_state())
     
     def _on_run_clicked(self) -> None:
+
+        for sb in (
+        self._I_ext_spin,
+        self._y0_u_spin, self._y0_w_spin,
+        self._t1_spin, self._dt_spin, self._rtol_spin, self._atol_spin,
+        self._max_step_spin, self._spike_thr_spin,
+        self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
+        self._ts_t_min, self._ts_t_max,
+        ):
+            sb.interpretText()
+
+        self._I_ext = float(self._I_ext_spin.value())
+        self._y0_u = float(self._y0_u_spin.value())
+        self._y0_w = float(self._y0_w_spin.value())
+
+        self._on_sim_changed()
+        self._on_phase_view_changed()
+        self._on_ts_view_changed()
+
         self._emit_timer.stop()
         self._emit_state_now()
         self.runRequested.emit(self.current_state())
+
+    def _on_reset_clicked(self) -> None:
+        self._emit_timer.stop()
+
+        d = self._defaults
+
+        #restore internal state
+        self._par = replace(d.par)
+        self._I_ext = float(d.I_ext)
+        self._y0_u = float(d.y0_u)
+        self._y0_w = float(d.y0_w)
+        self._sim = replace(d.sim)
+        self._phase_view = replace(d.phase_view)
+        self._ts_view = replace(d.ts_view)
+
+        self._sync_widgets_from_state()
+
+        self._emit_state_now()
     
     def _on_I_ext_changed(self, v: float) -> None:
         self._I_ext = float(v)
@@ -559,20 +615,50 @@ class ControlsPanel(QWidget):
         )
         self._schedule_emit()
 
-    def _on_phase_view_changed(self, *_:Any) -> None:       
+    def _on_phase_view_changed(self, *_: Any) -> None:
+        u_min = float(self._pp_u_min.value())
+        u_max = float(self._pp_u_max.value())
+        w_min = float(self._pp_w_min.value())
+        w_max = float(self._pp_w_max.value())
+
+        while (u_max <= u_min) or (w_max <= w_min):
+            # swap if user inverted them
+            if u_max < u_min:
+                u_min, u_max = u_max, u_min
+            if w_max < w_min:
+                w_min, w_max = w_max, w_min
+
+            # if collapsed, pad
+            if u_max == u_min:
+                u_max = u_min + 0.2
+            if w_max == w_min:
+                w_max = w_min + 0.2
+
+        # reflect the normalized values back into the UI
+        for sb, val in (
+            (self._pp_u_min, u_min),
+            (self._pp_u_max, u_max),
+            (self._pp_w_min, w_min),
+            (self._pp_w_max, w_max),
+        ):
+            sb.blockSignals(True)
+            sb.setValue(val)
+            sb.blockSignals(False)
+
         self._phase_view = replace(
             self._phase_view,
-            u_min=float(self._pp_u_min.value()),
-            u_max=float(self._pp_u_max.value()),
-            w_min=float(self._pp_w_min.value()),
-            w_max=float(self._pp_w_max.value()),
+            u_min=u_min,
+            u_max=u_max,
+            w_min=w_min,
+            w_max=w_max,
             show_vector_field=bool(self._show_vec_chk.isChecked()),
             show_equilibria=bool(self._show_eq_chk.isChecked()),
             show_nullclines=bool(self._show_null_chk.isChecked()),
             show_bifurcations=bool(self._show_bif_chk.isChecked()),
-            show_separatrix=bool(self._show_sep_chk.isChecked())
+            show_separatrix=bool(self._show_sep_chk.isChecked()),
         )
         self._schedule_emit()
+
     
     def _on_ts_view_changed(self, *_: Any) -> None:
         #if tmin, tmax == 0 use auto

@@ -14,7 +14,7 @@ from ..model.simulation import SimulationResult
 @dataclass(frozen=True)
 class TimeSeriesView:
     t_min: Optional[float] = None #ms
-    t_max: Optional[float] = None #ms
+    t_max: Optional[float] = 1.0 #ms
 
     show_u: bool = True
     show_w: bool = True
@@ -31,7 +31,7 @@ class TimeSeriesCanvas(QWidget):
                  view: TimeSeriesView = TimeSeriesView()) -> None:
         super().__init__(parent)
 
-        self._view = view
+        self._view = view if view is not None else TimeSeriesView()
         self._res: Optional[SimulationResult] = None
 
         self._fig = Figure(constrained_layout=True)
