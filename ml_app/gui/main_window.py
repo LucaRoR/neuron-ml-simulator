@@ -66,8 +66,7 @@ class MainWindow(QMainWindow):
     
     #Signal handlers
     def _on_state_changed(self, state: GuiState) -> None:
-        self.phase_canvas.set_view(state.phase_view)
-        self.phase_canvas.set_state(state.par, state.I_ext)
+        self.phase_canvas.set_state_and_view(state.par, state.I_ext, state.phase_view)
 
         self.ts_canvas.set_view(state.ts_view)
         self._status.showMessage(
@@ -102,6 +101,7 @@ class MainWindow(QMainWindow):
                 app.restoreOverrideCursor()
 
         self.ts_canvas.set_result(res)
+        self.phase_canvas.set_trajectory_result(res, state.I_ext, state.par)
 
         #We inform the user about the status of the simulation.
         msg = "OK" if res.success else "FAILED"

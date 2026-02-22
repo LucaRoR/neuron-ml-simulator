@@ -1,6 +1,6 @@
 # neuron-ml-simulator
 
-**Status: Beta Version (v0.9.1)**
+**Status: Beta Version (v0.9.2)**
 
 Interactive Python simulator for a modified Morris-Lecar model (Na/K-based), with phase-plane and time-series visualisation.
 
