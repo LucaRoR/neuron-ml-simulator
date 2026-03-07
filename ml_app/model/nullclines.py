@@ -25,5 +25,5 @@ def u_nullcline(u: np.ndarray, I_ext: float, par: MLParameters) -> np.ndarray: #
     w[mask] = numerator[mask] / denominator[mask] #compute the u-nullcline
 
     #Mask meaningless values of w
-    w[(w<0.0) | (w>1.0)] = np.nan
+    w[(w>1.0)] = np.nan
     return w

@@ -2,3 +2,4 @@ numpy
 scipy
 matplotlib
 PyQt6
+PyQt6-WebEngine

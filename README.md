@@ -1,6 +1,6 @@
 # neuron-ml-simulator
 
-**Status: Beta Version (v0.9.2)**
+**Status: Beta Version (v0.9.3)**
 
 Interactive Python simulator for a modified Morris-Lecar model (Na/K-based), with phase-plane and time-series visualisation.
 
@@ -54,19 +54,29 @@ neuron-ml-simulator/
 ├── config.py
 ├── model/
 │ ├── __init__.py
+│ ├── analysis_engine.py
 │ ├── parameters.py
 │ ├── ml_equations.py
 │ ├── simulation.py
 │ ├── nullclines.py
 │ ├── equilibria.py
 │ ├── bifurcations.py
+│ ├── limit_cycle.py
 │ └── separatrix.py
 ├── gui/
 │ ├── __init__.py
 │ ├── main_window.py
 │ ├── controls_panel.py
 │ ├── phaseplane_canvas.py
-│ └── timeseries_canvas.py
+│ ├── math_inspector_window.py
+│ ├── equilibria_table_model.py
+│ ├── timeseries_canvas.py
+│ ├── assets/
+│ │ ├── mathjax/
+│ │ │ ├── es5/
+│ └── tables/
+│ │ ├── __init__.py
+│ │ └── equilibria_table.py
 ├── resources/
 │ ├── __init__.py
 │ ├── styles.qss

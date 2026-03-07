@@ -13,12 +13,12 @@ from matplotlib.figure import Figure
 
 from scipy.integrate import solve_ivp
 
+from ..model.analysis_engine import AnalysisEngine
 from ..model.parameters import MLParameters
-from ..model.nullclines import u_nullcline, w_nullcline
-from ..model.equilibria import find_equilibria, Equilibrium
+from ..model.equilibria import Equilibrium
 from ..model.ml_equations import f, g, w_inf
-from ..model.bifurcations import find_saddle_nodes, find_hopf_points
 from ..model.separatrix import compute_separatrix, ViewWindow
+from ..model.limit_cycle import compute_limit_cycle
 
 
 @dataclass(frozen=True)
@@ -35,18 +35,22 @@ class PhasePlaneView: #view configuration
     show_vector_field: bool = True
     show_equilibria: bool = True
     show_nullclines: bool = True
+    show_trajectory: bool = True
     show_bifurcations: bool = False
     show_separatrix: bool = False
+    show_limit_cycle: bool = False
 
 class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines, equilibria, vector field 
     def __init__(self, 
                  parent: Optional[QWidget] = None,
                  *,
-                 view: PhasePlaneView = PhasePlaneView()
+                 view: PhasePlaneView = PhasePlaneView(),
+                 analysis: AnalysisEngine,
     ) -> None:
         super().__init__(parent)
 
         self._view = view
+        self._analysis = analysis
         self._par: Optional[MLParameters] = None
         self._I_ext: Optional[float] = None
 
@@ -88,6 +92,12 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         self._traj_line, = self._ax.plot([], [], linewidth=2.2, zorder=50)
         self._traj_line.set_visible(False)
 
+        self._lc_cache_key = None
+        self._lc_cache_res = None
+        self._lc_last_good = None
+        self._lc_line, = self._ax.plot([], [], linewidth=2.2, zorder=60)
+        self._lc_line.set_visible(False)
+
         self._last_timings = {}
 
         self.INTERACTIVE_EQ_SCAN = 1501
@@ -110,6 +120,9 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
         I_ext = float(I_ext)
         if self._par == par and self._I_ext == I_ext:
             return
+        self._lc_last_good = None
+        self._lc_cache_key = None
+        self._lc_cache_res = None
         self._par = par
         self._I_ext = I_ext
         self.redraw()
@@ -123,6 +136,10 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
     def set_state_and_view(self, par: MLParameters, I_ext: float, view: PhasePlaneView) -> None:
         I_ext = float(I_ext)
         changed = (self._par != par) or (self._I_ext != I_ext) or (self._view != view)
+        if (self._par != par) or (self._I_ext != I_ext):
+            self._lc_last_good = None
+            self._lc_cache_key = None
+            self._lc_cache_res = None
         self._par = par
         self._I_ext = I_ext
         self._view = view
@@ -197,7 +214,7 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
                 t.remove()
             self._bif_texts.clear()
         
-        if self._traj_cache_res is not None:
+        if view.show_trajectory and (self._traj_cache_res is not None):
             t0 = time.perf_counter()
             key = (float(I_ext), self._par_key(par))
             if key == self._traj_cache_key:
@@ -257,6 +274,36 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
             for ln in self._sep_lines:
                 ln.set_visible(False)
 
+        if view.show_limit_cycle:
+            w0, w1 = self._safe_w_bounds()
+            key = (
+                float(I_ext),
+                self._par_key(par),
+                float(view.u_min), float(view.u_max), float(w0), float(w1),
+            )
+            if key != self._lc_cache_key:
+                self._lc_cache_res = compute_limit_cycle(
+                    I_ext, par,
+                    u_min=view.u_min, u_max=view.u_max,
+                    T_total=1500.0, T_transient=800.0,
+                    max_step=0.5,
+                    seed_cycle=self._lc_last_good,
+                )
+                self._lc_cache_key = key
+
+            res = self._lc_cache_res
+            if res is not None:
+                self._lc_last_good = res
+            if res is None:
+                self._lc_line.set_visible(False)
+            else:
+                self._lc_line.set_data(res.u, res.w)
+                self._lc_line.set_visible(True)
+        else:
+            self._lc_cache_key = None
+            self._lc_cache_res = None
+            self._lc_line.set_visible(False)
+
 
         tim["total"] = time.perf_counter() - t_total0
         self._last_timings = tim
@@ -282,30 +329,27 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
 
     def _plot_nullclines(self, I_ext: float, par: MLParameters) -> None:
         v = self._view
-        key = (float(I_ext), self._par_key(par), float(v.u_min), float(v.u_max), int(v.n_u))
-        if key != self._null_cache_key:
-            u = np.linspace(v.u_min, v.u_max, v.n_u)
-            w_w = w_nullcline(u, par)
-            w_u = u_nullcline(u, I_ext, par)
-            self._null_cache_res = (u, w_w, w_u)
-            self._null_cache_key = key
-
-        u, w_w, w_u = self._null_cache_res
+        u, w_w, w_u = self._analysis.nullclines(
+            I_ext=I_ext,
+            par=par,
+            u_min=v.u_min,
+            u_max=v.u_max,
+            n_u=v.n_u,
+        )
         self._nullcline_w_line.set_data(u, w_w)
         self._nullcline_u_line.set_data(u, w_u)
 
     def _plot_equilibria(self, I_ext: float, par: MLParameters) -> None:
         v = self._view
-        key = (float(I_ext), self._par_key(par), float(v.u_min), float(v.u_max), int(self.INTERACTIVE_EQ_SCAN), 1e-4, True)
-
-        if key != self._eq_cache_key:
-            self._eq_cache_res = find_equilibria(
-                I_ext, par,
-                u_min=v.u_min, u_max=v.u_max,
-                n_scan=self.INTERACTIVE_EQ_SCAN, mr_tol=1e-4, classify=True
+        eqs = self._analysis.equilibria(
+                I_ext=I_ext,
+                par=par,
+                u_min=v.u_min,
+                u_max=v.u_max,
+                n_scan=self.INTERACTIVE_EQ_SCAN,
+                mr_tol=1e-4,
+                classify=True,
             )
-            self._eq_cache_key = key
-        eqs = self._eq_cache_res
         for t in self._eq_texts:
             t.remove()
         self._eq_texts.clear()
@@ -404,15 +448,12 @@ class PhasePlaneCanvas(QWidget): #render the (u,w)-plane. It contains nullclines
 
     def _plot_bifurcations(self, par: MLParameters) -> None:
         v = self._view
-        key = (self._par_key(par), float(v.u_min), float(v.u_max), 5001)
-
-        if key != self._bif_cache_key:
-            sns = find_saddle_nodes(par, u_min=v.u_min, u_max=v.u_max, n_scan=5001)
-            hopf = find_hopf_points(par, u_min=v.u_min, u_max=v.u_max, n_scan=5001)
-            self._bif_cache_res = (sns, hopf)
-            self._bif_cache_key = key
-
-        sns, hopf = self._bif_cache_res
+        sns, hopf = self._analysis.bifurcations(
+            par=par,
+            u_min=self._view.u_min,
+            u_max=self._view.u_max,
+            n_scan=self.FINAL_EQ_SCAN,
+        )
 
         for t in self._bif_texts:
             t.remove()

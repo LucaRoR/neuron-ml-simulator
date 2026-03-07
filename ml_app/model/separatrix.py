@@ -134,13 +134,24 @@ def compute_separatrix(
 
         def leave_window(t: float, y: np.ndarray) -> float:
             u, w = float(y[0]), float(y[1])
-            inside = window.contains(u, w, margin=float(exit_margin))
-            # Must NOT be zero at start when inside.
-            # Positive inside, negative outside -> zero crossing at the boundary.
-            return 1.0 if inside else -1.0
+            du = float(exit_margin) * (window.u_max - window.u_min)
+            dw = float(exit_margin) * (window.w_max - window.w_min)
+
+            u_min = window.u_min - du
+            u_max = window.u_max + du
+            w_min = window.w_min - dw
+            w_max = window.w_max + dw
+
+            #Distance to each boundary
+            d_left   = u - u_min
+            d_right  = u_max - u
+            d_bottom = w - w_min
+            d_top    = w_max - w
+
+            return min(d_left, d_right, d_bottom, d_top)
 
         leave_window.terminal = True
-        leave_window.direction = -1  # trigger when going from + to -
+        leave_window.direction = -1  # trigger when leaving
         events = leave_window
 
     branches: list[SeparatrixBranch] = []

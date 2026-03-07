@@ -14,7 +14,7 @@ from ..model.simulation import SimulationResult
 @dataclass(frozen=True)
 class TimeSeriesView:
     t_min: Optional[float] = None #ms
-    t_max: Optional[float] = 1.0 #ms
+    t_max: Optional[float] = 100.0 #ms
 
     show_u: bool = True
     show_w: bool = True

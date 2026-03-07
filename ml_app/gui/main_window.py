@@ -4,6 +4,7 @@ from typing import Optional
 
 import numpy as np
 
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -14,6 +15,9 @@ from PyQt6.QtWidgets import (
     QApplication
 )
 
+
+from ..model.analysis_engine import AnalysisEngine
+from .math_inspector_window import MathInspectorWindow
 from .controls_panel import ControlsPanel, GuiState
 from .phaseplane_canvas import PhasePlaneCanvas
 from .timeseries_canvas import TimeSeriesCanvas
@@ -27,9 +31,12 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Neuron ML Simulator")
 
+        self.analysis = AnalysisEngine(max_cache=12)
+        self.math_window: Optional[MathInspectorWindow] = None
+
         #Widgets
         self.controls = ControlsPanel(self)
-        self.phase_canvas = PhasePlaneCanvas(self)
+        self.phase_canvas = PhasePlaneCanvas(self, analysis=self.analysis)
         self.ts_canvas = TimeSeriesCanvas(self)
 
         #Layout
@@ -39,8 +46,12 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar(self)
         self.setStatusBar(self._status)
 
+        self._build_menu()
+
         self.controls.stateChanged.connect(self._on_state_changed)
         self.controls.runRequested.connect(self._on_run_requested)
+
+        self.controls.mathInspectorToggled.connect(self._on_math_inspector_toggled)
 
         self._on_state_changed(self.controls.current_state())
 
@@ -64,6 +75,44 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main_splitter)
         self.resize(1200, 800)
     
+    #Math inspector
+
+    def _build_menu(self) -> None:
+        view_menu = self.menuBar().addMenu("&View")
+
+        act_math = QAction("Mathematical Inspector", self)
+        act_math.setShortcut("Ctrl+M")
+        act_math.triggered.connect(self._toggle_math_inspector)
+
+        view_menu.addAction(act_math)
+
+    def _on_math_inspector_toggled(self, checked: bool) -> None:
+        if checked:
+            #show
+            if self.math_window is None:
+                self.math_window = MathInspectorWindow(self, parent=self)
+            self.math_window.show()
+            self.math_window.raise_()
+            self.math_window.activateWindow()
+            self.math_window.set_state(self.controls.current_state())
+        else:
+            #hide
+            if self.math_window is not None:
+                self.math_window.hide()
+
+    def _toggle_math_inspector(self) -> None:
+        if self.math_window is None:
+            self.math_window = MathInspectorWindow(self, parent=self)
+        if self.math_window.isVisible():
+            self.math_window.hide()
+            self.controls.set_math_inspector_checked(False)
+        else:
+            self.math_window.show()
+            self.math_window.raise_()
+            self.math_window.activateWindow()
+            self.math_window.set_state(self.controls.current_state())
+            self.controls.set_math_inspector_checked(True)
+    
     #Signal handlers
     def _on_state_changed(self, state: GuiState) -> None:
         self.phase_canvas.set_state_and_view(state.par, state.I_ext, state.phase_view)
@@ -75,6 +124,9 @@ class MainWindow(QMainWindow):
             f"| method={state.sim.method}",
             0,
         )
+
+        if self.math_window is not None:
+            self.math_window.set_state(state)
     
     def _on_run_requested(self, state: GuiState) -> None:
         self._on_state_changed(state)

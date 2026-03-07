@@ -91,6 +91,7 @@ def find_equilibria(
             if not np.isfinite(J).all():
                 eig = None
                 stab = "non-finite"
+                eqs.append(Equilibrium(u=u_star, w=w_star, eigvals=eig, stability=stab))
                 continue
             eig = np.linalg.eigvals(J)
         

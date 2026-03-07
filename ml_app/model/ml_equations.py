@@ -3,8 +3,9 @@ from .parameters import MLParameters
 
 #We avoid division by zero
 def _safe_slope(n: float, eps: float = 1e-3):
+    n = float(n)
     if abs(n) < eps:
-        return eps
+        return n if n == 0 else eps * (1.0 if n > 0 else -1.0)
     return n
 
 #Steady-state functions and time constants
@@ -18,7 +19,10 @@ def w_inf(u: float, par: MLParameters) -> float:
 
 def tau_w(u: float, par: MLParameters) -> float:
     V4_w = _safe_slope(par.V4_w)
-    return 1 / (2 * par.Phi_w * np.cosh((u - par.V3_w) / V4_w))
+    x = (u - par.V3_w) / (2.0 * V4_w)
+    # We clip cosh, because cosh(50)is already 1e21
+    x = np.clip(x, -50.0, 50.0)
+    return 1.0 / (par.Phi_w * np.cosh(x))
 
 
 #Ionic currents

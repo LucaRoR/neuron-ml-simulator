@@ -24,10 +24,13 @@ from PyQt6.QtWidgets import(
     QScrollArea
 )
 
-from ..model.parameters import MLParameters
+from ..model.parameters import MLParameters, ML_PRESETS, clone_ml_preset
 from ..model.simulation import SimulationConfig
 from .phaseplane_canvas import PhasePlaneView
 from .timeseries_canvas import TimeSeriesView
+
+TS_TMAX_CAP_MS = 10000.0
+TS_TMAX_MIN_MS = 0.1
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,8 @@ class ControlsPanel(QWidget):
     """
     stateChanged = pyqtSignal(GuiState)
     runRequested = pyqtSignal(GuiState)
+
+    mathInspectorToggled = pyqtSignal(bool)
 
     def __init__(
             self,
@@ -88,6 +93,8 @@ class ControlsPanel(QWidget):
 
         self._par_widgets: dict[str, QWidget] = {}
         self._par_labels: dict[str, QWidget] = {}
+        self._preset_keys: list[str] = list(ML_PRESETS.keys())
+        self._active_preset_key: str = "custom"
 
         self._build_ui()
         self._sync_widgets_from_state()
@@ -109,6 +116,14 @@ class ControlsPanel(QWidget):
             ts_view=self._ts_view,
         )
     
+    def set_math_inspector_checked(self, checked: bool) -> None:
+        btn = getattr(self, "_math_inspector_btn", None)
+        if btn is None:
+            return
+        btn.blockSignals(True)
+        btn.setChecked(bool(checked))
+        btn.blockSignals(False)
+    
     #----
     # UI
     #----
@@ -121,6 +136,19 @@ class ControlsPanel(QWidget):
         #Quick settings
         q_box = QGroupBox("Quick controls")
         q_layout = QFormLayout(q_box)
+
+        self._preset_combo = QComboBox()
+        self._preset_combo.addItem("Custom", userData="custom")
+        for key in self._preset_keys:
+            preset = ML_PRESETS[key]
+            self._preset_combo.addItem(preset.label, userData=key)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
+        q_layout.addRow("Preset", self._preset_combo)
+
+        self._preset_desc = QLabel("Manual parameter selection.")
+        self._preset_desc.setWordWrap(True)
+        self._preset_desc.setStyleSheet("color: #666;")
+        q_layout.addRow("", self._preset_desc)
 
         self._I_ext_spin = QDoubleSpinBox()
         self._I_ext_spin.setRange(-5000.0, 5000.0)
@@ -161,8 +189,32 @@ class ControlsPanel(QWidget):
 
         q_layout.addRow("", run_row)
 
+        #Math inspector
+        self._math_inspector_btn = QPushButton("Math Inspector")
+        self._math_inspector_btn.setCheckable(True)
+        self._math_inspector_btn.toggled.connect(self.mathInspectorToggled.emit)
+        q_layout.addRow("", self._math_inspector_btn)
+
 
         root.addWidget(q_box)
+
+        advanced_box = QGroupBox("Advanced")
+        advanced_box.setCheckable(True)
+        advanced_box.setChecked(False)  # collapsed by default
+
+        advanced_outer = QVBoxLayout(advanced_box)
+
+        advanced_content = QWidget()
+        advanced_layout = QVBoxLayout(advanced_content)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(10)
+
+        advanced_outer.addWidget(advanced_content)
+        advanced_content.setVisible(False)
+
+        advanced_box.setFlat(False)
+
+        advanced_box.toggled.connect(advanced_content.setVisible)
 
         #Simulation box (scrollable)
         sim_box = QGroupBox("Simulation")
@@ -225,6 +277,10 @@ class ControlsPanel(QWidget):
         self._spike_thr_spin.valueChanged.connect(self._on_sim_changed)
         sim_layout.addRow("spike threshold (mV)", self._spike_thr_spin)
 
+        self._spike_thr_enable_chk = QCheckBox("Enable spike threshold")
+        self._spike_thr_enable_chk.stateChanged.connect(self._on_spike_thr_enable_changed)
+        sim_layout.addRow("", self._spike_thr_enable_chk)
+
         self._stop_on_spike_chk = QCheckBox("Stop integration on spike")
         self._stop_on_spike_chk.stateChanged.connect(self._on_sim_changed)
         sim_layout.addRow("", self._stop_on_spike_chk)
@@ -232,7 +288,7 @@ class ControlsPanel(QWidget):
         sim_scroll.setWidget(sim_inner)
         sim_outer.addWidget(sim_scroll)
 
-        root.addWidget(sim_box)
+        advanced_layout.addWidget(sim_box)
 
         #Phase plane view controls
         phase_box = QGroupBox("Phase plane view")
@@ -277,19 +333,26 @@ class ControlsPanel(QWidget):
         self._show_vec_chk = QCheckBox("Show vector field")
         self._show_eq_chk = QCheckBox("Show equilibria")
         self._show_null_chk = QCheckBox("Show nullclines")
+        self._show_traj_chk = QCheckBox("Show trajectory")
         self._show_bif_chk = QCheckBox("Show bifurcations")
         self._show_sep_chk = QCheckBox("Show separatrix")
+        self._show_lc_chk = QCheckBox("Show limit cycle")
         self._show_vec_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_eq_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_null_chk.stateChanged.connect(self._on_phase_view_changed)
+        self._show_traj_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_bif_chk.stateChanged.connect(self._on_phase_view_changed)
         self._show_sep_chk.stateChanged.connect(self._on_phase_view_changed)
+        self._show_lc_chk.stateChanged.connect(self._on_phase_view_changed)
+
 
         phase_layout.addRow("", self._show_vec_chk)
         phase_layout.addRow("", self._show_eq_chk)
         phase_layout.addRow("", self._show_null_chk)
+        phase_layout.addRow("", self._show_traj_chk)
         phase_layout.addRow("", self._show_bif_chk)
         phase_layout.addRow("", self._show_sep_chk)
+        phase_layout.addRow("", self._show_lc_chk)
 
         root.addWidget(phase_box)
 
@@ -300,7 +363,7 @@ class ControlsPanel(QWidget):
         self._ts_t_min = QDoubleSpinBox()
         self._ts_t_max = QDoubleSpinBox()
         for sb in (self._ts_t_min, self._ts_t_max):
-            sb.setRange(0.0, 1e9)
+            sb.setRange(0.0, TS_TMAX_CAP_MS)
             sb.setDecimals(3)
             sb.setSingleStep(10.0)
             sb.valueChanged.connect(self._on_ts_view_changed)
@@ -322,6 +385,7 @@ class ControlsPanel(QWidget):
 
         root.addWidget(ts_box)
 
+
         #Parameters
         par_box = QGroupBox("Model parameters")
         par_outer = QVBoxLayout(par_box)
@@ -340,9 +404,12 @@ class ControlsPanel(QWidget):
         par_scroll.setWidget(par_inner)
         par_outer.addWidget(par_scroll)
 
-        root.addWidget(par_box, stretch=1)
+        advanced_layout.addWidget(par_box)
+        advanced_layout.setStretchFactor(par_box, 1)
 
-        root.addStretch(1)
+        advanced_box.setToolTip("Simulation settings and model parameters")
+
+        root.addWidget(advanced_box, stretch=1)
     
     def _build_parameter_form(self, form: QFormLayout) -> None:
         if not is_dataclass(self._par):
@@ -463,16 +530,18 @@ class ControlsPanel(QWidget):
         if self._sim.spike_threshold is None:
             self._spike_thr_spin.setValue(0.0)
             self._spike_thr_spin.setEnabled(False)
+            self._spike_thr_enable_chk.setChecked(False)
         else:
             self._spike_thr_spin.setEnabled(True)
             self._spike_thr_spin.setValue(float(self._sim.spike_threshold))
+            self._spike_thr_enable_chk.setChecked(True)
 
 
         self._stop_on_spike_chk.setChecked(bool(self._sim.stop_on_spike))
 
         #Phase plane
         for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
-                   self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_bif_chk, self._show_sep_chk):
+                   self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_traj_chk, self._show_bif_chk, self._show_sep_chk, self._show_lc_chk):
             sb.blockSignals(True)
         try:
             self._pp_u_min.setValue(float(self._phase_view.u_min))
@@ -482,12 +551,14 @@ class ControlsPanel(QWidget):
             self._show_vec_chk.setChecked(bool(self._phase_view.show_vector_field))
             self._show_eq_chk.setChecked(bool(self._phase_view.show_equilibria))
             self._show_null_chk.setChecked(bool(self._phase_view.show_nullclines))
+            self._show_traj_chk.setChecked(bool(getattr(self._phase_view, "show_trajectory", True)))
             self._show_bif_chk.setChecked(bool(self._phase_view.show_bifurcations))
             self._show_sep_chk.setChecked(bool(self._phase_view.show_separatrix))
+            self._show_lc_chk.setChecked(bool(self._phase_view.show_limit_cycle))
 
         finally:
             for sb in (self._pp_u_min, self._pp_u_max, self._pp_w_min, self._pp_w_max,
-                       self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_bif_chk, self._show_sep_chk):
+                       self._show_vec_chk, self._show_eq_chk, self._show_null_chk, self._show_traj_chk, self._show_bif_chk, self._show_sep_chk, self._show_lc_chk):
                 sb.blockSignals(False)
 
         #Timeseries
@@ -496,7 +567,7 @@ class ControlsPanel(QWidget):
             w.blockSignals(True)
         try:
             self._ts_t_min.setValue(float(self._ts_view.t_min if self._ts_view.t_min is not None else 0.0))
-            self._ts_t_max.setValue(float(self._ts_view.t_max if self._ts_view.t_max is not None else 1.0))
+            self._ts_t_max.setValue(float(self._ts_view.t_max if self._ts_view.t_max is not None else 0.0))
             self._show_u_chk.setChecked(bool(self._ts_view.show_u))
             self._show_w_chk.setChecked(bool(self._ts_view.show_w))
         finally:
@@ -507,6 +578,52 @@ class ControlsPanel(QWidget):
         for name, w in self._par_widgets.items():
             val = getattr(self._par, name)
             self._set_widget_value(w, val)
+        
+        self._sync_preset_widget()
+
+    def _sync_preset_widget(self) -> None:
+        combo = getattr(self, "_preset_combo", None)
+        if combo is None:
+            return
+        
+        combo.blockSignals(True)
+        try:
+            idx = combo.findData(self._active_preset_key)
+            if idx < 0:
+                idx = combo.findData("custom")
+            combo.setCurrentIndex(idx)
+        finally:
+            combo.blockSignals(False)
+        
+        if self._active_preset_key == "custom":
+            self._preset_desc.setText("Manual parameter selection.")
+        else:
+            preset = ML_PRESETS.get(self._active_preset_key)
+            self._preset_desc.setText(
+                preset.description if preset is not None else "Manual parameter selection."
+            )
+    
+    def _mark_preset_as_custom(self) -> None:
+        if self._active_preset_key != "custom":
+            self._active_preset_key = "custom"
+            self._sync_preset_widget()
+
+    def _apply_preset(self, preset_key: str) -> None:
+        preset = clone_ml_preset(preset_key)
+        if preset is None:
+            return
+        
+        self._par = preset.par
+        if preset.I_ext is not None:
+            self._I_ext = float(preset.I_ext)
+        if preset.y0_u is not None:
+            self._y0_u = float(preset.y0_u)
+        if preset.y0_w is not None:
+            self._y0_w = float(preset.y0_w)
+        
+        self._active_preset_key = preset.key
+        self._sync_widgets_from_state()
+        self._schedule_emit()
 
     def _set_widget_value(self, w:QWidget, val:Any) -> None:
         w.blockSignals(True)
@@ -581,6 +698,8 @@ class ControlsPanel(QWidget):
         self._phase_view = replace(d.phase_view)
         self._ts_view = replace(d.ts_view)
 
+        self._active_preset_key = "custom"
+
         self._sync_widgets_from_state()
 
         self._emit_state_now()
@@ -593,6 +712,11 @@ class ControlsPanel(QWidget):
         self._y0_u = float(self._y0_u_spin.value())
         self._y0_w = float(self._y0_w_spin.value())
         self._schedule_emit()
+
+    def _on_spike_thr_enable_changed(self, *_: Any) -> None:
+        enabled = bool(self._spike_thr_enable_chk.isChecked())
+        self._spike_thr_spin.setEnabled(enabled)
+        self._on_sim_changed()
     
     def _on_sim_changed(self, *_:Any) -> None:
         #if spike threshold is disabled, treat it as None
@@ -654,18 +778,47 @@ class ControlsPanel(QWidget):
             show_vector_field=bool(self._show_vec_chk.isChecked()),
             show_equilibria=bool(self._show_eq_chk.isChecked()),
             show_nullclines=bool(self._show_null_chk.isChecked()),
+            show_trajectory=bool(self._show_traj_chk.isChecked()),
             show_bifurcations=bool(self._show_bif_chk.isChecked()),
             show_separatrix=bool(self._show_sep_chk.isChecked()),
+            show_limit_cycle=bool(self._show_lc_chk.isChecked()),
         )
         self._schedule_emit()
 
     
     def _on_ts_view_changed(self, *_: Any) -> None:
-        #if tmin, tmax == 0 use auto
+        # if tmin, tmax == 0 use auto (view)
         tmin = float(self._ts_t_min.value())
         tmax = float(self._ts_t_max.value())
         t_min = None if tmin == 0.0 else tmin
         t_max = None if tmax == 0.0 else tmax
+
+        # If user explicitly sets tmax (nonzero), force the simulation to compute up to it.
+        if t_max is not None:
+            desired_t1 = float(t_max)
+
+            # clamp for safety
+            if desired_t1 < TS_TMAX_MIN_MS:
+                desired_t1 = TS_TMAX_MIN_MS
+            if desired_t1 > TS_TMAX_CAP_MS:
+                desired_t1 = TS_TMAX_CAP_MS
+
+            # update internal sim config
+            if abs(desired_t1 - float(self._sim.t1)) > 1e-12:
+                self._sim = replace(self._sim, t1=desired_t1)
+
+                # reflect back into the Simulation t1 spinbox without recursion
+                self._t1_spin.blockSignals(True)
+                self._t1_spin.setValue(desired_t1)
+                self._t1_spin.blockSignals(False)
+
+                # if view max was > cap, also reflect the capped value to the TS spinbox
+                if desired_t1 != float(t_max):
+                    self._ts_t_max.blockSignals(True)
+                    self._ts_t_max.setValue(desired_t1)
+                    self._ts_t_max.blockSignals(False)
+
+                    t_max = desired_t1
 
         self._ts_view = replace(
             self._ts_view,
@@ -681,5 +834,15 @@ class ControlsPanel(QWidget):
         w = self._par_widgets[name]
         new_val = self._read_widget_value(w)
         self._par = replace(self._par, **{name: new_val})
-
+        self._mark_preset_as_custom()
         self._schedule_emit()
+
+    def _on_preset_selected(self, _index: int) -> None:
+        preset_key = self._preset_combo.currentData()
+        if not isinstance(preset_key, str):
+            return
+        if preset_key == "custom":
+            self._active_preset_key = "custom"
+            self._sync_preset_widget()
+            return
+        self._apply_preset(preset_key)

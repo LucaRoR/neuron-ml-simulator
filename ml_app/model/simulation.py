@@ -50,9 +50,20 @@ def simulate(y0: np.ndarray, I_ext: float, par: MLParameters, config: Optional[S
         raise ValueError(f"y0 must have shape (2,), got {y0.shape}")
     
     #create uniform output grid for GUI
-    t_eval = np.arange(config.t0, config.t1 + config.dt, config.dt, dtype = float)
+    MAX_POINTS = 20000 
 
-    #solve_ivp expecets a f(t,y) function, therefore we capture I_ext 
+    t0 = float(config.t0)
+    t1 = float(config.t1)
+    dt = float(config.dt)
+
+    if dt <= 0:
+        raise ValueError("dt must be > 0")
+
+    n = int(np.floor((t1 - t0) / dt)) + 1
+    if n > MAX_POINTS:
+        t_eval = np.linspace(t0, t1, MAX_POINTS, dtype=float)
+    else:
+        t_eval = np.arange(t0, t1 + dt, dt, dtype=float)
     def fun(t: float, y:np.ndarray) -> np.ndarray:
         return ml_rhs(t, y, I_ext, par)
 
